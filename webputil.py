@@ -93,8 +93,6 @@ def _get_size_from_anmf(chunk):
     return (width, height)
     
 def set_vp8x(chunks):
-    if chunks[0]["fourcc"] == b"VP8X":
-        chunks.pop(0)
 
     width = None
     height = None
@@ -103,6 +101,7 @@ def set_vp8x(chunks):
     for chunk in chunks:
         if chunk["fourcc"] == b"VP8X":
             width, height = _get_size_from_vp8x(chunk)
+            print(bin((ord(chunk["data"][0:1])))[2:].zfill(8))
         elif chunk["fourcc"] == b"VP8 ":
             width, height = _get_size_from_vp8(chunk)
         elif chunk["fourcc"] == b"VP8L":
@@ -121,6 +120,11 @@ def set_vp8x(chunks):
             flags[6] = b"1"
     width_minus_one = width - 1
     height_minus_one = height - 1
+
+    if chunks[0]["fourcc"] == b"VP8X":
+        chunks.pop(0)
+
+    print(b"".join(flags))
 
     header_bytes = b"VP8X"
     length_bytes = b"\x0a\x00\x00\x00"
@@ -215,7 +219,7 @@ def insert_exif_into_chunks(chunks, exif_bytes):
 
 def insert(webp_bytes, exif_bytes):
     chunks = split(data)
-    # chunks = insert_exif_into_chunks(chunks, exif_bytes)
+    chunks = insert_exif_into_chunks(chunks, exif_bytes)
     chunks = set_vp8x(chunks)
     file_header, padded = get_file_header(chunks)
     print(b" ".join([chunk["fourcc"] for chunk in chunks]))
@@ -232,6 +236,7 @@ def remove(webp_bytes):
     for index, chunk in enumerate(chunks):
         if chunk["fourcc"] == b"EXIF":
             chunks.pop(index)
+    chunks = set_vp8x(chunks)
     file_header, padded = get_file_header(chunks)
     print(b" ".join([chunk["fourcc"] for chunk in chunks]))
     merged = merge_chunks(chunks)
@@ -249,11 +254,14 @@ if __name__ == "__main__":
     IMAGE_DIR = "images/"
     OUT_DIR = "images/out/"
     files = [
-        "1.webp",
-        "1_webp_a.webp",
-        "1_webp_ll.webp",
-        "2.webp",
-        "z_out064.webp",
+        "web1.webp",
+        "web2.webp",
+        "web3.webp",
+        "web4.webp",
+        "tool1.webp",
+        "pil1.webp",
+        "pil2.webp",
+        "pil3.webp",
     ]
 
     exif_dict = {
