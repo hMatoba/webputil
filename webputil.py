@@ -6,7 +6,7 @@ def split(data):
 
     webp_length_bytes = data[4:8]
     webp_length = struct.unpack("<L", webp_length_bytes)[0]
-    print("webp length: {0}".format(webp_length))
+    print("webp length: {0}, {1}".format(webp_length, len(data[8:])))
     RIFF_HEADER_SIZE = 8
     file_size = RIFF_HEADER_SIZE + webp_length
 
@@ -28,12 +28,13 @@ def split(data):
         chunk_data = data[pointer:pointer + chunk_length]
         chunks.append({"fourcc":fourcc, "length_bytes":chunk_length_bytes, "data":chunk_data})
 
-        if chunk_length % 2:
-            chunk_length += 1
-
-
         print("{0} {1} {2} {3}".format(fourcc, chunk_length, len(chunk_data), chunk_data[-2:]))
-        pointer += chunk_length
+
+
+        padding = 1 if chunk_length % 2 else 0
+
+
+        pointer += chunk_length + padding
     return chunks
 
 def merge_chunks(chunks):
@@ -69,6 +70,11 @@ def _get_size_from_vp8(chunk):
         height = struct.unpack("<H", height_bytes)[0]
         return (width, height)
 
+def _vp8L_contains_alpha(chunk_data):
+    flag = ord(chunk_data[4:5]) >> 5-1 & ord(b"\x01")
+    contains = 1 * flag
+    return contains
+
 def _get_size_from_vp8L(chunk):
     b1 = chunk["data"][1:2]
     b2 = chunk["data"][2:3]
@@ -78,7 +84,7 @@ def _get_size_from_vp8L(chunk):
     width_minus_one = (ord(b2) & ord(b"\x3F")) << 8 | ord(b1)
     width = width_minus_one + 1
 
-    height_minus_one = (ord(b4) & ord(b"\x0F")) << 10 | ord(b3) << 2 | (ord(b4) & ord(b"\xC0")) >> 6
+    height_minus_one = (ord(b4) & ord(b"\x0F")) << 10 | ord(b3) << 2 | (ord(b2) & ord(b"\xC0")) >> 6
     height = height_minus_one + 1
 
     return (width, height)
@@ -101,10 +107,12 @@ def set_vp8x(chunks):
     for chunk in chunks:
         if chunk["fourcc"] == b"VP8X":
             width, height = _get_size_from_vp8x(chunk)
-            print(bin((ord(chunk["data"][0:1])))[2:].zfill(8))
         elif chunk["fourcc"] == b"VP8 ":
             width, height = _get_size_from_vp8(chunk)
         elif chunk["fourcc"] == b"VP8L":
+            is_rgba = _vp8L_contains_alpha(chunk["data"])
+            if is_rgba:
+                flags[3] = b"1"
             width, height = _get_size_from_vp8L(chunk)
         elif chunk["fourcc"] == b"ANMF":
             width, height = _get_size_from_anmf(chunk)
@@ -148,7 +156,9 @@ def get_file_header(chunks):
 
     length = WEBP_HEADER_LENGTH
     for chunk in chunks:
-        length += FOURCC_LENGTH + LENGTH_BYTES_LENGTH + struct.unpack("<L", chunk["length_bytes"])[0]
+        data_length = struct.unpack("<L", chunk["length_bytes"])[0]
+        data_length += 1 if data_length % 2 else 0
+        length += FOURCC_LENGTH + LENGTH_BYTES_LENGTH + data_length
     if length % 2:
         length += 1
         padded = True
@@ -157,6 +167,7 @@ def get_file_header(chunks):
     webp_header = b"WEBP"
     file_header = riff + length_bytes + webp_header
     return (file_header, padded)
+
 
 
 def get_exif(data):
@@ -262,7 +273,10 @@ if __name__ == "__main__":
         "pil1.webp",
         "pil2.webp",
         "pil3.webp",
+        "pil_rgb.webp",
+        "pil_rgba.webp",
     ]
+
 
     exif_dict = {
         "0th":{
@@ -271,10 +285,11 @@ if __name__ == "__main__":
         }
     }
 
-    print("=======================")
     for filename in files:
-        
-        print("**********\n" + filename)
+        print("\n\n\n**********\n" + filename)
+        Image.open(IMAGE_DIR + filename)
+
+        print("  -----------\n")
         with open(IMAGE_DIR + filename, "rb") as f:
             data = f.read()
 
@@ -314,3 +329,20 @@ if __name__ == "__main__":
             Image.open(OUT_DIR + "r_" + filename)
         except Exception as e:
             print(e.args)
+
+    files = glob.glob(OUT_DIR + "*.webp")
+    result = ""
+    for filename in files:
+        print("\n========================" + filename)
+        with open(filename, "rb") as f:
+            data = f.read()
+        split(data)
+        try:
+            Image.open(filename)
+            result += "-"
+        except Exception as e:
+            print(e.args)
+            result += "!"
+    print(result)
+
+    print("xxxxxxxxxxxxxxxxxxxxxxxx")
